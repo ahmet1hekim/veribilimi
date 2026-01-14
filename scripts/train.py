@@ -10,6 +10,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 import numpy as np
+import pickle
 from pathlib import Path
 import json
 import matplotlib.pyplot as plt
@@ -118,7 +119,7 @@ def evaluate(model, test_loader, criterion, device):
     avg_loss = total_loss / len(test_loader)
     return avg_loss
 
-def calculate_metrics(model, test_loader, device):
+def calculate_metrics(model, test_loader, device, target_scaler=None):
     """Calculate additional metrics (MAE, RMSE, R²)"""
     model.eval()
     predictions = []
@@ -134,7 +135,12 @@ def calculate_metrics(model, test_loader, device):
     predictions = np.array(predictions).flatten()
     actuals = np.array(actuals).flatten()
     
-    # Calculate metrics
+    # Inverse transform to original scale (dollars) if scaler provided
+    if target_scaler is not None:
+        predictions = target_scaler.inverse_transform(predictions.reshape(-1, 1)).flatten()
+        actuals = target_scaler.inverse_transform(actuals.reshape(-1, 1)).flatten()
+    
+    # Calculate metrics on original scale
     mae = np.mean(np.abs(predictions - actuals))
     rmse = np.sqrt(np.mean((predictions - actuals) ** 2))
     
@@ -284,6 +290,12 @@ def main():
     # Load data
     X_train, X_test, y_train, y_test = load_data()
     
+    # Load target scaler for inverse transformation
+    print("Loading target scaler...")
+    with open('data/cleaned/target_scaler.pkl', 'rb') as f:
+        target_scaler = pickle.load(f)
+    print(f"Target scaler loaded (mean=${target_scaler.mean_[0]:,.2f}, std=${target_scaler.scale_[0]:,.2f})\n")
+    
     # Create dataloaders
     train_loader, test_loader = create_dataloaders(
         X_train, X_test, y_train, y_test, batch_size=64
@@ -330,7 +342,7 @@ def main():
     print("FINAL EVALUATION")
     print("="*60 + "\n")
     
-    mae, rmse, r2, predictions, actuals = calculate_metrics(model, test_loader, device)
+    mae, rmse, r2, predictions, actuals = calculate_metrics(model, test_loader, device, target_scaler)
     
     print(f"Test Set Metrics:")
     print(f"  MAE (Mean Absolute Error):  ${mae:,.2f}")

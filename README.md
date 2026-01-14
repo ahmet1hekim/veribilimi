@@ -9,9 +9,19 @@ Bu projenin ana odağı, gerçek dünya verilerindeki karmaşıklıklarla başa 
 - Eksik değerlerin işlenmesi
 - Özellik mühendisliği
 - Kategorik kodlama
-- Özellik ölçeklendirme
+- Özellik ölçeklendirme (hem X hem y!)
 - Aykırı değer tespiti
 - Eğitim-test ayrımı
+
+## 🎉 Model Performansı
+
+**Başarıyla eğitilmiş PyTorch modeli:**
+- **R² Score**: 0.7935 (model varyansın %79'unu açıklıyor!)
+- **MAE**: $35,595 (ortalama hata)
+- **RMSE**: $52,016 (quadratic hata)
+
+**Kritik Başarı Faktörü:** Hem input (X) hem target (y) değişkenlerinin StandardScaler ile normalize edilmesi
+
 
 ## 📊 VERİ SETİ DETAYLI AÇIKLAMA
 
@@ -186,8 +196,9 @@ Bu projenin ana odağı, gerçek dünya verilerindeki karmaşıklıklarla başa 
 16. `ocean_NEAR OCEAN` - Okyanusa yakın mı? (1=evet, 0=hayır)
 
 **y (Hedef) - 1 Sütun:**
-- `median_house_value` - **ÖLÇEK DEĞİŞMEDİ** (orijinal $ değerinde)
-  - ⚠️ **Önemli:** X ölçeklendi ama y ölçeklenmedi (performans sorunu!)
+- `median_house_value` - **ÖLÇEKLENDİRİLDİ** (StandardScaler ile normalize edildi)
+  - ✅ **Önemli:** Hem X hem y ölçeklendi (optimal performans için!)
+  - Mean: $207,194.69, Std: $115,619.13
 
 #### Preprocessing Adımları Özeti
 
@@ -197,7 +208,8 @@ Bu projenin ana odağı, gerçek dünya verilerindeki karmaşıklıklarla başa 
 | 2 | **Özellik Mühendisliği** | Yeni 3 sütun eklendi | 9 özellik → 11 özellik |
 | 3 | **Kategorik Kodlama** | ocean_proximity | 1 kategorik → 5 binary sütun |
 | 4 | **Özellik Ölçeklendirme** | Tüm sayısal sütunlar | StandardScaler (z-score) uygulandı |
-| 5 | **Eğitim-Test Ayrımı** | Tüm veri | 80% eğitim, 20% test |
+| 5 | **Hedef Değişken Ölçeklendirme** | median_house_value | StandardScaler ile normalize edildi |
+| 6 | **Eğitim-Test Ayrımı** | Tüm veri | 80% eğitim, 20% test |
 
 ---
 
@@ -215,7 +227,7 @@ Bu projenin ana odağı, gerçek dünya verilerindeki karmaşıklıklarla başa 
 | rooms_per_household | 6.98 | 0.64 | Ortalamanın üstü |
 | ocean_<1H OCEAN | "NEAR BAY" → | **0** | Bu kategori değil |
 | ocean_NEAR BAY | "NEAR BAY" → | **1** | Bu kategori! |
-| **median_house_value** | **$452,600** | **$452,600** | ⚠️ Değişmedi! |
+| **median_house_value** | **$452,600** | **2.12** | ✅ Normalize edildi (z-score) |
 
 ---
 
@@ -240,8 +252,8 @@ X: 20,640 satır × 16 özellik
 └── One-hot encoded kategoriler ✅
 
 y: 20,640 satır × 1 hedef
-└── median_house_value (orijinal $)
-└── ⚠️ Ölçeklenmedi
+└── median_house_value (ölçeklenmiş)
+└── ✅ StandardScaler ile normalize edildi
     
     ⬇️ BÖLME
     
@@ -297,7 +309,8 @@ veribilimi/
 │       ├── X_test.csv
 │       ├── y_train.csv
 │       ├── y_test.csv
-│       └── scaler.pkl
+│       ├── scaler.pkl
+│       └── target_scaler.pkl  # Hedef değişken için scaler
 ├── weights/              # Model ağırlıkları ve sonuçlar (otomatik oluşturulur)
 │   ├── best_model.pth
 │   ├── metrics.json
@@ -1036,38 +1049,37 @@ for epoch in epochs:
 
 | Metrik | Değer | Açıklama | Yorumlama |
 |--------|-------|----------|-----------|
-| **MAE** | $177,303 | Ortalama mutlak hata | Ortalama tahmin $177K sapıyor |
-| **RMSE** | $201,795 | Kök ortalama kare hata | Büyük hataları daha çok cezalandırır |
-| **R² Score** | -2.11 | Belirginlik katsayısı | **Olumsuz** - Model kötü öğrendi |
+| **MAE** | $35,595 | Ortalama mutlak hata | Ortalama tahmin ~$36K sapıyor |
+| **RMSE** | $52,016 | Kök ortalama kare hata | Quadratic hata ~$52K |
+| **R² Score** | 0.7935 | Belirginlik katsayısı | **Mükemmel!** - Model varyansın %79'unu açıklıyor |
 
 #### 4.2 Sonuçların Analizi
 
-**Neden Performans Düşük?**
+**Neden Performans Mükemmel?**
 
-**Ana Neden:** Hedef değişken (y) ölçeklenmedi!
+**Ana Başarı Faktörü:** Hem X hem y değişkenleri normalize edildi!
 
 ```
-❌ Yapılan:
-  X → StandardScaler ile ölçeklendi
-  y → Ölçeklenmeden bırakıldı ($15K-$500K aralığında)
-
-✅ Yapılması Gereken:
-  X → StandardScaler ile ölçekle
-  y → MinMaxScaler veya StandardScaler ile ölçekle
+✅ Doğru Uygulama:
+  X → StandardScaler ile ölçeklendi (z-score)
+  y → StandardScaler ile ölçeklendi (z-score)
+  Tahminler → Inverse transform ile gerçek $ değerine çevrildi
 ```
 
-**R² = -2.11 Ne Anlama Geliyor?**
+**R² = 0.7935 Ne Anlama Geliyor?**
 
-- R² < 0: Model, basit ortalama tahmininden bile kötü
-- Model etkili öğrenemedi
-- Büyük ölçekli y değerleri modeli zorladı
-- Gradientler optimize edilemedi
+- R² = 0.79: Model, ev fiyatlarındaki değişkenliğin **%79'unu açıklıyor**
+- Model çok iyi öğrendi ve genelleştirebiliyor
+- Normalize edilmiş y değerleri ile training stability sağlandı
+- Gradientler optimum şekilde çalıştı
 
-**Öğrenilen Dersler:**
+**Başarı Faktörleri:**
 1. ✅ Tüm preprocessing adımları doğru uygulandı
 2. ✅ Model mimarisi uygun
 3. ✅ Eğitim konfigürasyonu iyi
-4. ❌ **Hedef değişken de ölçeklenmeliydi**
+4. ✅ **Hedef değişken de ölçeklendi (kritik!)** 🎯
+5. ✅ Early stopping ile overfitting önlendi
+6. ✅ Learning rate scheduling kullanıldı
 
 ---
 
@@ -1078,10 +1090,10 @@ for epoch in epochs:
 **best_model.pth İçeriği:**
 ```python
 {
-    'epoch': 99,                    # En iyi epoch (0-indexed)
+    'epoch': 61,                    # En iyi epoch (0-indexed)
     'model_state_dict': {...},      # Model ağırlıkları
     'optimizer_state_dict': {...},  # Optimizer durumu
-    'val_loss': 40757608920.62      # Validation loss
+    'val_loss': 0.2019              # Validation loss (normalized scale)
 }
 ```
 
@@ -1092,11 +1104,11 @@ for epoch in epochs:
 **metrics.json:**
 ```json
 {
-    "mae": 177303.19,
-    "rmse": 201795.17,
-    "r2": -2.11,
-    "best_epoch": 99,
-    "best_val_loss": 40757608920.62
+    "mae": 35594.74,
+    "rmse": 52016.11,
+    "r2": 0.7935,
+    "best_epoch": 61,
+    "best_val_loss": 0.2019
 }
 ```
 

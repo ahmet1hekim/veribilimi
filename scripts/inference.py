@@ -37,22 +37,27 @@ def load_model(model_path='weights/best_model.pth', input_dim=16):
     return model
 
 def load_test_data(data_dir='data/cleaned'):
-    """Load test data and scaler"""
+    """Load test data and scalers"""
     print("Loading test data...")
     
     X_test = pd.read_csv(f'{data_dir}/X_test.csv')
     y_test = pd.read_csv(f'{data_dir}/y_test.csv')
     
-    # Load scaler
+    # Load feature scaler
     with open(f'{data_dir}/scaler.pkl', 'rb') as f:
         scaler = pickle.load(f)
     
-    print(f"✓ Loaded {len(X_test)} test samples")
-    print(f"✓ Features: {list(X_test.columns)}\n")
+    # Load target scaler for inverse transformation
+    with open(f'{data_dir}/target_scaler.pkl', 'rb') as f:
+        target_scaler = pickle.load(f)
     
-    return X_test, y_test, scaler
+    print(f"✓ Loaded {len(X_test)} test samples")
+    print(f"✓ Features: {list(X_test.columns)}")
+    print(f"✓ Target scaler loaded (mean=${target_scaler.mean_[0]:,.2f}, std=${target_scaler.scale_[0]:,.2f})\n")
+    
+    return X_test, y_test, scaler, target_scaler
 
-def run_inference(model, X_test, num_samples=10):
+def run_inference(model, X_test, target_scaler, num_samples=10):
     """Run inference on test samples"""
     print(f"Running inference on {num_samples} random samples...")
     
@@ -65,20 +70,24 @@ def run_inference(model, X_test, num_samples=10):
     
     # Run inference
     with torch.no_grad():
-        predictions = model(X_tensor).numpy().flatten()
+        predictions_scaled = model(X_tensor).numpy()
+    
+    # Inverse transform to original scale (dollars)
+    predictions = target_scaler.inverse_transform(predictions_scaled).flatten()
     
     print(f"✓ Inference complete\n")
     
     return indices, predictions
 
-def create_prediction_comparison(indices, X_test, y_test, predictions, scaler, save_path='weights/inference_results.png'):
+def create_prediction_comparison(indices, X_test, y_test, predictions, target_scaler, save_path='weights/inference_results.png'):
     """Create detailed visualization of predictions"""
     
     fig = plt.figure(figsize=(18, 12))
     gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
     
-    # Extract actual values
-    y_actual = y_test.values.flatten()[indices]
+    # Extract actual values and inverse transform to original scale
+    y_actual_scaled = y_test.values.flatten()[indices]
+    y_actual = target_scaler.inverse_transform(y_actual_scaled.reshape(-1, 1)).flatten()
     
     # 1. Actual vs Predicted bar chart
     ax1 = fig.add_subplot(gs[0, :])
@@ -168,7 +177,7 @@ def create_prediction_comparison(indices, X_test, y_test, predictions, scaler, s
     print(f"✓ Saved visualization to {save_path}")
     plt.close()
 
-def create_detailed_comparison_table(indices, X_test, y_test, predictions, save_path='weights/inference_table.png'):
+def create_detailed_comparison_table(indices, X_test, y_test, predictions, target_scaler, save_path='weights/inference_table.png'):
     """Create a detailed table comparing predictions"""
     
     # Get original (unscaled) feature names for better readability
@@ -182,8 +191,9 @@ def create_detailed_comparison_table(indices, X_test, y_test, predictions, save_
     ax.axis('tight')
     ax.axis('off')
     
-    # Prepare data for table
-    y_actual = y_test.values.flatten()[indices]
+    # Prepare data for table - inverse transform actual values
+    y_actual_scaled = y_test.values.flatten()[indices]
+    y_actual = target_scaler.inverse_transform(y_actual_scaled.reshape(-1, 1)).flatten()
     errors = predictions - y_actual
     pct_errors = (errors / y_actual) * 100
     
@@ -235,10 +245,12 @@ def create_detailed_comparison_table(indices, X_test, y_test, predictions, save_
     print(f"✓ Saved comparison table to {save_path}")
     plt.close()
 
-def print_summary_statistics(indices, y_test, predictions):
+def print_summary_statistics(indices, y_test, predictions, target_scaler):
     """Print summary statistics of predictions"""
     
-    y_actual = y_test.values.flatten()[indices]
+    # Inverse transform actual values to original scale
+    y_actual_scaled = y_test.values.flatten()[indices]
+    y_actual = target_scaler.inverse_transform(y_actual_scaled.reshape(-1, 1)).flatten()
     errors = predictions - y_actual
     pct_errors = (errors / y_actual) * 100
     
@@ -261,10 +273,12 @@ def print_summary_statistics(indices, y_test, predictions):
     print(f"  Range:            {pct_errors.min():.1f}% to {pct_errors.max():.1f}%")
     print("\n" + "="*60 + "\n")
 
-def print_individual_predictions(indices, X_test, y_test, predictions, num_to_show=5):
+def print_individual_predictions(indices, X_test, y_test, predictions, target_scaler, num_to_show=5):
     """Print detailed information for individual predictions"""
     
-    y_actual = y_test.values.flatten()[indices]
+    # Inverse transform actual values to original scale
+    y_actual_scaled = y_test.values.flatten()[indices]
+    y_actual = target_scaler.inverse_transform(y_actual_scaled.reshape(-1, 1)).flatten()
     errors = predictions - y_actual
     
     print("="*60)
@@ -299,22 +313,22 @@ def main():
     
     # Load model and data
     model = load_model()
-    X_test, y_test, scaler = load_test_data()
+    X_test, y_test, scaler, target_scaler = load_test_data()
     
     # Run inference on random samples
     num_samples = 10
-    indices, predictions = run_inference(model, X_test, num_samples=num_samples)
+    indices, predictions = run_inference(model, X_test, target_scaler, num_samples=num_samples)
     
     # Print detailed predictions
-    print_individual_predictions(indices, X_test, y_test, predictions, num_to_show=5)
+    print_individual_predictions(indices, X_test, y_test, predictions, target_scaler, num_to_show=5)
     
     # Print summary statistics
-    print_summary_statistics(indices, y_test, predictions)
+    print_summary_statistics(indices, y_test, predictions, target_scaler)
     
     # Create visualizations
     print("Creating visualizations...")
-    create_prediction_comparison(indices, X_test, y_test, predictions, scaler)
-    create_detailed_comparison_table(indices, X_test, y_test, predictions)
+    create_prediction_comparison(indices, X_test, y_test, predictions, target_scaler)
+    create_detailed_comparison_table(indices, X_test, y_test, predictions, target_scaler)
     
     print("\n" + "="*60)
     print("INFERENCE COMPLETE!")

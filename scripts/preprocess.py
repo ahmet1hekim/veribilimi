@@ -227,7 +227,7 @@ def scale_features(X_train, X_test):
 
 def save_processed_data(X_train, X_test, y_train, y_test, scaler, output_dir='data/cleaned'):
     """
-    Save processed data and scaler
+    Save processed data and scalers (both feature and target)
     """
     print("=" * 60)
     print("SAVING PROCESSED DATA")
@@ -237,22 +237,42 @@ def save_processed_data(X_train, X_test, y_train, y_test, scaler, output_dir='da
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     
+    # Scale target variable for better training stability
+    print("\nScaling target variable (house prices)...")
+    target_scaler = StandardScaler()
+    y_train_scaled = target_scaler.fit_transform(y_train.values.reshape(-1, 1))
+    y_test_scaled = target_scaler.transform(y_test.values.reshape(-1, 1))
+    
+    print(f"Target scaling parameters:")
+    print(f"  Mean: ${target_scaler.mean_[0]:,.2f}")
+    print(f"  Std:  ${target_scaler.scale_[0]:,.2f}")
+    
     # Save data
     X_train.to_csv(output_path / 'X_train.csv', index=False)
     X_test.to_csv(output_path / 'X_test.csv', index=False)
-    y_train.to_csv(output_path / 'y_train.csv', index=False, header=True)
-    y_test.to_csv(output_path / 'y_test.csv', index=False, header=True)
     
-    # Save scaler
+    # Save scaled targets
+    pd.DataFrame(y_train_scaled, columns=['median_house_value']).to_csv(
+        output_path / 'y_train.csv', index=False
+    )
+    pd.DataFrame(y_test_scaled, columns=['median_house_value']).to_csv(
+        output_path / 'y_test.csv', index=False
+    )
+    
+    # Save scalers
     with open(output_path / 'scaler.pkl', 'wb') as f:
         pickle.dump(scaler, f)
+    
+    with open(output_path / 'target_scaler.pkl', 'wb') as f:
+        pickle.dump(target_scaler, f)
     
     print(f"\nSaved processed data to {output_dir}/")
     print(f"- X_train.csv: {X_train.shape}")
     print(f"- X_test.csv: {X_test.shape}")
-    print(f"- y_train.csv: {y_train.shape}")
-    print(f"- y_test.csv: {y_test.shape}")
-    print(f"- scaler.pkl")
+    print(f"- y_train.csv: {y_train.shape} (SCALED)")
+    print(f"- y_test.csv: {y_test.shape} (SCALED)")
+    print(f"- scaler.pkl (feature scaler)")
+    print(f"- target_scaler.pkl (target scaler)")
     
     print("\n" + "=" * 60 + "\n")
 
